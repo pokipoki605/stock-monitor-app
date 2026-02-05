@@ -1,80 +1,65 @@
 import streamlit as st
 import pandas as pd
-from logic import get_watchlist, save_watchlist, check_stock_detail, get_jp_stock_list, calculate_new_average
+import plotly.express as px
+from logic import get_watchlist, save_watchlist, check_stock_full_detail, get_jp_stock_list
 
-st.set_page_config(page_title="My Portfolio", layout="wide")
-st.title("💰 資産管理・高配当監視ボード")
+st.set_page_config(page_title="Asset Manager", layout="wide")
+st.title("🚀 統合資産管理システム")
 
 watchlist, sha = get_watchlist()
 jpx_df = get_jp_stock_list()
 
-# --- サイドバー：購入・登録 ---
+# --- サイドバー設定 ---
 with st.sidebar:
-    st.header("🛒 銘柄登録・買い増し")
-    selected_stock = st.selectbox("銘柄検索", options=jpx_df['display'].tolist(), index=None)
-    buy_price = st.number_input("購入価格 (円)", min_value=0.0)
-    buy_qty = st.number_input("株数", min_value=0)
+    st.header("⚙️ 設定")
+    alert_threshold = st.number_input("損益アラートしきい値 (%)", value=10.0, step=1.0)
+    # watchlistに設定を保存
+    if st.button("アラート設定を保存"):
+        watchlist["_settings"] = {"alert_pct": alert_threshold}
+        save_watchlist(watchlist)
+        st.success("設定を保存しました")
+
+# --- メイン画面 (タブ分け) ---
+tab1, tab2, tab3 = st.tabs(["📋 ポートフォリオ", "💰 配当金計画", "📊 資産分析"])
+
+# データの集計
+portfolio_data = []
+for name, info in list(watchlist.items()):
+    if name.startswith("_"): continue # 設定データはスキップ
+    detail = check_stock_full_detail(info['ticker'])
+    if detail:
+        profit_pct = ((detail['price'] - info['avg_cost']) / info['avg_cost']) * 100
+        portfolio_data.append({
+            "name": name, "qty": info['qty'], "avg": info['avg_cost'],
+            "current": detail['price'], "profit": (detail['price'] - info['avg_cost']) * info['qty'],
+            "profit_pct": profit_pct, "sector": detail['sector'],
+            "annual_div": detail['annual_div'] * info['qty'], "div_months": detail['div_months']
+        })
+
+df_pf = pd.DataFrame(portfolio_data)
+
+with tab1:
+    st.subheader("保有銘柄一覧")
+    st.dataframe(df_pf[["name", "current", "avg", "qty", "profit", "profit_pct", "sector"]])
+
+with tab2:
+    st.subheader("年間配当シミュレーション")
+    total_div = df_pf["annual_div"].sum()
+    st.metric("予想年間配当金 (税引前)", f"{total_div:,.0f} 円")
     
-    if st.button("ポートフォリオに反映"):
-        if selected_stock and buy_qty > 0:
-            code = selected_stock.split(": ")[0]
-            name = selected_stock.split(": ")[1]
-            ticker = f"{code}.T"
-            
-            # すでに持っている場合は平均単価を再計算
-            if name in watchlist:
-                old_qty = watchlist[name].get('qty', 0)
-                old_avg = watchlist[name].get('avg_cost', 0)
-                new_avg = calculate_new_average(old_qty, old_avg, buy_qty, buy_price)
-                watchlist[name]['qty'] = old_qty + buy_qty
-                watchlist[name]['avg_cost'] = new_avg
-            else:
-                watchlist[name] = {'ticker': ticker, 'qty': buy_qty, 'avg_cost': buy_price}
-            
-            save_watchlist(watchlist)
-            st.success(f"{name} を反映しました")
-            st.rerun()
-
-# --- メイン画面：ポートフォリオ一覧 ---
-if watchlist:
-    total_profit = 0
-    data_for_table = []
+    # 月別配当グラフの作成
+    monthly_div = {m: 0 for m in range(1, 13)}
+    for _, row in df_pf.iterrows():
+        if row['div_months']:
+            div_per_time = row['annual_div'] / len(row['div_months'])
+            for m in row['div_months']:
+                monthly_div[m] += div_per_time
     
-    for name, info in watchlist.items():
-        stock_data = check_stock_detail(info['ticker'])
-        if stock_data:
-            current = stock_data['price']
-            avg = info['avg_cost']
-            qty = info['qty']
-            
-            # 含み益の計算
-            profit = (current - avg) * qty
-            total_profit += profit
-            
-            data_for_table.append({
-                "銘柄": name,
-                "現在値": f"{current:,.1f}円",
-                "取得単価": f"{avg:,.1f}円",
-                "保有数": f"{qty}株",
-                "配当利回り": f"{stock_data['yield']:.2f}%",
-                "含み損益": profit,
-                "history": stock_data['history'] # チャート用
-            })
+    df_monthly = pd.DataFrame({"月": [f"{m}月" for m in range(1, 13)], "配当金": list(monthly_div.values())})
+    st.bar_chart(df_monthly.set_index("月"))
 
-    # 合計損益の表示
-    st.metric("トータル含み損益", f"{total_profit:,.0f} 円", delta=f"{total_profit:,.0f} 円")
-
-    # 銘柄ごとの詳細表示
-    for item in data_for_table:
-        with st.expander(f"{item['銘柄']} (損益: {item['含み損益']:,.0f}円 / 利回り: {item['配当利回り']})"):
-            col1, col2 = st.columns([1, 2])
-            with col1:
-                st.write(f"**現在値:** {item['現在値']}")
-                st.write(f"**取得単価:** {item['取得単価']}")
-                if st.button(f"全部売却 (削除)", key=item['銘柄']):
-                    del watchlist[item['銘柄']]
-                    save_watchlist(watchlist)
-                    st.rerun()
-            with col2:
-                # 株価チャートの表示
-                st.line_chart(item['history'])
+with tab3:
+    st.subheader("業種別資産構成")
+    # 円グラフ
+    fig = px.pie(df_pf, values=df_pf['current'] * df_pf['qty'], names='sector', hole=0.4)
+    st.plotly_chart(fig)
