@@ -13,12 +13,12 @@ def get_config(key):
 # --- GitHub上のJSONファイルを読み書きする関数 ---
 GITHUB_REPO = "toshiki-tsuji/stock-monitor"
 FILE_PATH = "watchlist.json"
-GITHUB_TOKEN = get_config("GITHUB_TOKEN")
+GH_PAT = get_config("GH_PAT")
 
 def get_watchlist():
     """GitHubから現在のリストを取得"""
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{FILE_PATH}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    headers = {"Authorization": f"token {GH_PAT}"}
     r = requests.get(url, headers=headers)
     if r.status_code == 200:
         content = json.loads(base64.b64decode(r.json()['content']))
