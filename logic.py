@@ -11,7 +11,7 @@ def get_config(key):
     return st.secrets[key]
 
 # --- GitHub上のJSONファイルを読み書きする関数 ---
-GITHUB_REPO = "あなたのユーザー名/リポジトリ名" # 修正してください
+GITHUB_REPO = "toshiki-tsuji/stock-monitor"
 FILE_PATH = "watchlist.json"
 GITHUB_TOKEN = get_config("GITHUB_TOKEN")
 
