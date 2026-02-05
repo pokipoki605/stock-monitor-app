@@ -6,6 +6,7 @@ st.title("🇯🇵 日本株 監視＆管理")
 
 # 1. 現在のリストをGitHubから読み込む
 watchlist, sha = get_watchlist()
+jpx_df = get_jp_stock_list()
 
 # --- 銘柄追加セクション ---
 with st.sidebar:
