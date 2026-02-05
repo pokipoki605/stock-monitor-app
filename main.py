@@ -1,26 +1,36 @@
 import streamlit as st
-from logic import get_watchlist, save_watchlist, check_stock
+from logic import get_watchlist, save_watchlist, check_stock, get_jp_stock_list
 
-st.title("🇯🇵 日本株 監視マネージャー")
+st.set_page_config(page_title="日本株マネージャー", layout="wide")
+st.title("🇯🇵 日本株 監視＆管理")
 
 # 1. 現在のリストをGitHubから読み込む
 watchlist, sha = get_watchlist()
 
 # --- 銘柄追加セクション ---
-st.subheader("➕ 銘柄を追加")
-col1, col2 = st.columns([3, 1])
-with col1:
-    new_code = st.text_input("銘柄コード (例: 7203)", placeholder="数字4桁")
-with col2:
-    new_name = st.text_input("表示名", placeholder="トヨタ")
+with st.sidebar:
+    st.header("🔍 銘柄を検索して追加")
+    
+    # 社名やコードを入力すると候補が出る検索ボックス
+    selected_stock = st.selectbox(
+        "社名またはコードを入力",
+        options=jpx_df['display'].tolist(),
+        index=None,
+        placeholder="例: トヨタ、7203"
+    )
 
-if st.button("監視リストに登録"):
-    if new_code and new_name:
-        ticker = f"{new_code}.T"
-        watchlist[new_name] = ticker
-        if save_watchlist(watchlist):
-            st.success(f"{new_name} を追加しました！GitHub反映に数分かかる場合があります。")
-            st.rerun()
+    if st.button("監視リストに登録"):
+        if selected_stock:
+            # 「7203: トヨタ自動車」からコードと名前を切り分ける
+            code = selected_stock.split(": ")[0]
+            name = selected_stock.split(": ")[1]
+            
+            ticker = f"{code}.T"
+            watchlist[name] = ticker
+            
+            if save_watchlist(watchlist):
+                st.success(f"「{name}」を追加しました！")
+                st.rerun()
 
 # --- 現在のリストと削除セクション ---
 st.subheader("📋 監視中の銘柄")
