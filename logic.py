@@ -100,3 +100,25 @@ def calculate_new_average(old_qty, old_avg, add_qty, add_price):
     new_avg = ((old_qty * old_avg) + (add_qty * add_price)) / total_qty
     return new_avg
     
+def check_stock_full_detail(ticker):
+    """株価、配当、業種、チャートデータを一括取得"""
+    stock = yf.Ticker(ticker)
+    info = stock.info
+    df = stock.history(period="6mo")
+    if df.empty: return None
+    
+    # 配当履歴から入金月を推測
+    div_history = stock.dividends
+    div_months = []
+    if not div_history.empty:
+        # 直近2年間の配当実績から月を抽出
+        div_months = list(set(div_history.tail(4).index.month))
+    
+    return {
+        "price": df['Close'].iloc[-1],
+        "yield": info.get('dividendYield', 0) * 100 if info.get('dividendYield') else 0,
+        "annual_div": info.get('dividendRate', 0) if info.get('dividendRate') else 0,
+        "sector": info.get('sector', '未分類'),
+        "div_months": div_months,
+        "history": df['Close']
+    }
