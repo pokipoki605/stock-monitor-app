@@ -70,3 +70,33 @@ def check_stock(ticker, period="ytd"):
     else:
         low = df['Low'].min()
     return current, low, (current <= low)
+def check_stock_detail(ticker):
+    """株価、配当利回り、チャート用データを取得"""
+    stock = yf.Ticker(ticker)
+    # チャート用（過去6ヶ月）
+    df = stock.history(period="6mo")
+    if df.empty: return None
+    
+    current_price = df['Close'].iloc[-1]
+    
+    # 配当利回りの取得 (yfinanceのinfoは遅い場合があるためtry-except)
+    try:
+        dividend_yield = stock.info.get('dividendYield', 0) 
+        if dividend_yield is None: dividend_yield = 0
+        dividend_yield *= 100 # 0.03 -> 3.0%
+    except:
+        dividend_yield = 0
+        
+    return {
+        "price": current_price,
+        "yield": dividend_yield,
+        "history": df['Close']
+    }
+
+def calculate_new_average(old_qty, old_avg, add_qty, add_price):
+    """買い増し時の平均取得単価を計算"""
+    total_qty = old_qty + add_qty
+    if total_qty == 0: return 0
+    new_avg = ((old_qty * old_avg) + (add_qty * add_price)) / total_qty
+    return new_avg
+    
