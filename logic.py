@@ -14,7 +14,7 @@ def get_config(key):
     return None
 
 # --- GitHub連携の設定 ---
-GITHUB_REPO = "あなたのユーザー名/リポジトリ名" # ★ここを書き換えてください
+GITHUB_REPO = "pokipoki605/stock-monitor-app" 
 FILE_PATH = "watchlist.json"
 GH_PAT = get_config("GH_PAT")
 
