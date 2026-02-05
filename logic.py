@@ -4,6 +4,7 @@ import os
 import json
 import base64
 import streamlit as st
+import pandas as pd
 
 # --- 設定取得 ---
 def get_config(key):
@@ -60,3 +61,20 @@ def check_stock(ticker, period="ytd"):
     else:
         low = df['Low'].tail(250 if period=="1y" else 750).min() # 簡易計算
     return current, low, (current <= low)
+
+# --- 日本株全銘柄のリストを取得する関数 ---
+@st.cache_data # 1回読み込んだらキャッシュして高速化
+def get_jpx_stock_list():
+    """JPXから上場銘柄一覧を取得"""
+    # JPXの統計資料ページにあるExcel/CSVのURL（直接ダウンロードリンク）
+    url = "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls"
+    try:
+        df = pd.read_excel(url)
+        # 必要な列だけ抽出（コード、銘柄名）
+        df = df[['コード', '銘柄名']]
+        # コードを文字列にして「コード: 銘柄名」の形式のリストを作る
+        df['display'] = df['コード'].astype(str) + ": " + df['銘柄名']
+        return df
+    except Exception as e:
+        st.error(f"銘柄リストの取得に失敗しました: {e}")
+        return pd.DataFrame(columns=['コード', '銘柄名', 'display'])
