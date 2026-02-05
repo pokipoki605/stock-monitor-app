@@ -100,25 +100,56 @@ def calculate_new_average(old_qty, old_avg, add_qty, add_price):
     new_avg = ((old_qty * old_avg) + (add_qty * add_price)) / total_qty
     return new_avg
     
+@st.cache_data(ttl=3600)
 def check_stock_full_detail(ticker):
-    """株価、配当、業種、チャートデータを一括取得"""
-    stock = yf.Ticker(ticker)
-    info = stock.info
-    df = stock.history(period="6mo")
-    if df.empty: return None
-    
-    # 配当履歴から入金月を推測
-    div_history = stock.dividends
-    div_months = []
-    if not div_history.empty:
-        # 直近2年間の配当実績から月を抽出
-        div_months = list(set(div_history.tail(4).index.month))
-    
-    return {
-        "price": df['Close'].iloc[-1],
-        "yield": info.get('dividendYield', 0) * 100 if info.get('dividendYield') else 0,
-        "annual_div": info.get('dividendRate', 0) if info.get('dividendRate') else 0,
-        "sector": info.get('sector', '未分類'),
-        "div_months": div_months,
-        "history": df['Close']
-    }
+    """
+    株価、配当、業種データを取得。
+    stock.infoは重いため、まずは株価(history)を優先し、
+    infoが失敗してもアプリが止まらないようにします。
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        
+        # 1. 株価チャートと現在値を取得 (infoより圧倒的に軽い)
+        hist = stock.history(period="1y")
+        if hist.empty:
+            return None
+        
+        current_price = hist['Close'].iloc[-1]
+        
+        # 2. 業種と配当利回りを「おまけ」として取得を試みる
+        # ここでエラーが起きても、株価さえあれば表示は継続させる
+        sector = "不明"
+        dividend_rate = 0
+        div_months = []
+        
+        try:
+            # .info へのアクセスを最小限にするための try-except
+            s_info = stock.info
+            sector = s_info.get('sector', '不明')
+            dividend_rate = s_info.get('dividendRate', 0)
+        except:
+            # アクセス制限にかかった場合は、デフォルト値のまま進む
+            pass
+
+        # 3. 配当月を履歴から算出 (これも失敗してもOK)
+        try:
+            div_history = stock.dividends
+            if not div_history.empty:
+                div_months = list(set(div_history.tail(4).index.month))
+        except:
+            pass
+
+        return {
+            "price": current_price,
+            "yield": 0, # 計算が必要なら追加
+            "annual_div": dividend_rate,
+            "sector": sector,
+            "div_months": div_months,
+            "history": hist['Close']
+        }
+        
+    except Exception as e:
+        # 万が一アクセス制限で完全に止まった場合
+        st.warning(f"Yahoo Financeの制限により {ticker} の詳細が取得できませんでした。少し時間をおいてください。")
+        return None
