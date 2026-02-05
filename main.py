@@ -1,73 +1,31 @@
 import streamlit as st
-import yfinance as yf
-import requests
-import time
-import pandas as pd
-from datetime import datetime
+from logic import check_stock_and_notify, send_line
 
-# --- LINE設定 ---
-LINE_ACCESS_TOKEN = st.secrets["LINE_ACCESS_TOKEN"]
-LINE_USER_ID = st.secrets["LINE_USER_ID"]
+# 日本株の簡易リスト（社名で探せるように）
+JP_STOCKS = {"トヨタ": "7203.T", "ソフトバンクG": "9984.T", "任天堂": "7974.T", "ソニーG": "6758.T", "三菱UFJ": "8306.T"}
 
-def send_line_push(message):
-    url = "https://api.line.me/v2/bot/message/push"
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {LINE_ACCESS_TOKEN}"}
-    data = {"to": LINE_USER_ID, "messages": [{"type": "text", "text": message}]}
-    return requests.post(url, headers=headers, json=data).status_code
+st.title("🇯🇵 日本株 監視ボード")
 
-# --- ロジック関数 ---
-def get_historical_low(ticker_symbol, period="1y"):
-    """指定期間の最安値を取得 (period: 'ytd', '3y', '5y' など)"""
-    hist = yf.Ticker(ticker_symbol).history(period=period)
-    if hist.empty: return None
-    return hist['Low'].min()
+# 1. 銘柄を選ぶ
+selected_name = st.selectbox("社名で探す", list(JP_STOCKS.keys()) + ["直接入力"])
+if selected_name == "直接入力":
+    ticker = st.text_input("銘柄コードを入力 (例: 9101.T)", "9101.T")
+else:
+    ticker = JP_STOCKS[selected_name]
 
-# --- UI ---
-st.set_page_config(page_title="Stock Dashboard", layout="wide")
-st.title("📊 多機能株価監視ダッシュボード")
+period = st.radio("通知の基準にする期間", ["ytd", "1y", "3y", "5y"], horizontal=True)
 
-# 監視設定（カンマ区切りで複数入力）
-tickers_input = st.sidebar.text_input("監視する銘柄 (カンマ区切り)", "7203.T, 9984.T, AAPL")
-tickers = [t.strip() for t in tickers_input.split(",")]
-
-period_choice = st.sidebar.selectbox("監視基準とする期間", ["ytd", "1y", "3y", "5y"], index=0)
-check_interval = st.sidebar.slider("チェック間隔（分）", 1, 60, 5)
-
-if st.sidebar.button("監視 & ダッシュボード更新"):
-    st.info(f"監視銘柄: {', '.join(tickers)} / 基準期間: {period_choice}")
-    
-    # 表示用プレースホルダー
-    dashboard_area = st.empty()
-    
-    while True:
-        results = []
-        for ticker in tickers:
-            stock = yf.Ticker(ticker)
-            current_price = stock.fast_info['last_price']
-            target_low = get_historical_low(ticker, period_choice)
-            
-            # 判定
-            status = "通常"
-            if target_low and current_price <= target_low:
-                status = "🚨 最安値更新！"
-                send_line_push(f"【通知】{ticker}が{period_choice}の最安値を更新しました。\n現在値: {current_price:.1f}\n基準値: {target_low:.1f}")
-            
-            results.append({
-                "銘柄": ticker,
-                "現在値": round(current_price, 2),
-                f"{period_choice} 最安値": round(target_low, 2) if target_low else "不明",
-                "状態": status
-            })
-        
-        # ダッシュボード表示更新
-        df = pd.DataFrame(results)
-        with dashboard_area.container():
-            st.subheader(f"現在時刻: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            # メトリック表示（横並び）
-            cols = st.columns(len(tickers))
-            for i, res in enumerate(results):
-                cols[i].metric(res["銘柄"], res["現在値"], delta=None)
-            
-            st.table(df) # 一覧表
-            
-        time.sleep(check_interval * 60)
+# 2. 更新ボタン
+if st.button("🔄 今すぐ最新情報を取得・通知チェック"):
+    with st.spinner('取得中...'):
+        price, low, alert = check_stock_and_notify(ticker, period)
+        if price:
+            st.metric("現在値", f"{price:,.1f} 円")
+            st.write(f"期間内最安値: {low:,.1f} 円")
+            if alert:
+                st.error("🚨 安値更新！LINEに通知します。")
+                send_line(f"【手動チェック】\n{selected_name}({ticker})が安値更新！\n現在値: {price:,.1f}円")
+            else:
+                st.success("✅ 異常ありません。")
+        else:
+            st.error("株価が取得できませんでした。")
