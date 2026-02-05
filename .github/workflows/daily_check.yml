@@ -1,0 +1,34 @@
+name: Stock Price Monitor Bot
+
+# 実行タイミングの設定
+on:
+  schedule:
+    # 9:00, 13:00, 15:30 JST (日本時間) に実行
+    # UTC（世界標準時）は日本より9時間遅いため、その分を引いて計算します
+    - cron: '0 0 * * *'    # 9:00 JST
+    - cron: '0 4 * * *'    # 13:00 JST
+    - cron: '30 6 * * *'   # 15:30 JST
+  workflow_dispatch: # これを書くと、ボタン一つで手動実行できるようになります
+
+jobs:
+  check-stocks:
+    runs-on: ubuntu-latest # クラウド上のLinuxマシンで実行
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install yfinance requests pandas
+
+      - name: Run logic
+        env:
+          # ここでGitHubに保存したSecretsをプログラムに渡します
+          LINE_ACCESS_TOKEN: ${{ secrets.LINE_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: python cron_worker.py
